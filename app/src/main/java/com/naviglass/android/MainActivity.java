@@ -160,6 +160,8 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                         case "radioSave":result.put("saved",RadioDirectory.save(this,request.getString("station"),request.optBoolean("save")));break;
                         case "radioSearch":result.put("stations",RadioDirectory.search(this,request));break;
                         case "serverStatus":result=NetworkSources.status(this);break;
+                        case "serverLogin":result=NetworkSources.loginFields(this);break;
+                        case "serverForgetLogin":NetworkSources.forgetLogin(this);break;
                         case "serverConnect":NetworkSources.connect(this,request);result=NetworkSources.status(this);runOnUiThread(this::catalog);break;
                         case "serverMore":result.put("albums",NetworkSources.more(this));runOnUiThread(this::catalog);break;
                         case "serverLocal":NetworkSources.local(this);runOnUiThread(this::catalog);break;
@@ -168,7 +170,7 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                         case "addPlaylist":library.addToPlaylist(request.getString("playlist"),request.getString("track"));break;
                         default:throw new IllegalArgumentException("Unknown action");
                     }
-                    if(!java.util.Arrays.asList("tracks","artistAlbums","playlists","trackInfo","radioSaved","radioSearch","serverStatus").contains(action))summaryCache=null;
+                    if(!java.util.Arrays.asList("tracks","artistAlbums","playlists","trackInfo","radioSaved","radioSearch","serverStatus","serverLogin","serverForgetLogin").contains(action))summaryCache=null;
                     result.put("summary",summary());final JSONObject response=result;runOnUiThread(()->respond(id,response));
                 }catch(Exception e){runOnUiThread(()->failure(id,e));}});
         }

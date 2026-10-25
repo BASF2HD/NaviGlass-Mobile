@@ -1915,6 +1915,7 @@ function connectServer() {
   openPanel("Connect Navidrome", "connect");
   const form = document.createElement("form");
   const fields = {};
+  let savedLogin = null;
   for (const [key, label, type, placeholder] of [
     ["url", "Server URL", "url", "https://music.example.com"],
     ["username", "Username", "text", "Your Navidrome username"],
@@ -1941,13 +1942,37 @@ function connectServer() {
   const hint = document.createElement("p");
   hint.className = "hint";
   hint.textContent =
-    "Use the public HTTPS server address you use in your browser. Tailscale is not needed for publicly accessible HTTPS. Login is encrypted on Android. This UI preview never stores or uses your server login.";
+    "Use your HTTPS Navidrome address. Tailscale-only servers need Tailscale connected on this phone. Remembered logins are encrypted on this phone.";
+  const rememberLabel = document.createElement("label");
+  rememberLabel.className = "rememberLogin";
+  const remember = document.createElement("input");
+  remember.type = "checkbox";
+  remember.id = "server-remember";
+  remember.checked = true;
+  rememberLabel.append(remember, document.createTextNode("Remember login"));
   const save = button("Connect", null, "primary");
   save.type = "submit";
   const error = document.createElement("p");
   error.className = "error";
   error.setAttribute("role", "alert");
-  form.append(hint, error, save);
+  form.append(rememberLabel, hint, error, save);
+  const updateSavedPassword = () => {
+    const matches = savedLogin?.passwordSaved &&
+      fields.url.value.trim().replace(/\/+$/, "") === savedLogin.url &&
+      fields.username.value.trim() === savedLogin.username;
+    fields.password.required = !matches;
+    fields.password.placeholder = matches ? "Saved password" : "Your Navidrome password";
+  };
+  fields.url.oninput = fields.username.oninput = updateSavedPassword;
+  remember.onchange = async () => {
+    if (remember.checked || !native) return;
+    savedLogin = null;
+    updateSavedPassword();
+    save.disabled = true;
+    try { await request("serverForgetLogin"); }
+    catch (e) { error.textContent = e.message; }
+    finally { save.disabled = false; }
+  };
   form.onsubmit = async (e) => {
     e.preventDefault();
     if (!native) {
@@ -1963,6 +1988,7 @@ function connectServer() {
         url: fields.url.value,
         username: fields.username.value,
         password: fields.password.value,
+        remember: remember.checked,
       });
       fields.password.value = "";
       window.closePanel();
@@ -1978,6 +2004,18 @@ function connectServer() {
     }
   };
   $("panelBody").append(form);
+  if (native) {
+    save.disabled = true;
+    request("serverLogin").then((saved) => {
+      if (panelMode !== "connect" || $("server-url") !== fields.url) return;
+      savedLogin = saved;
+      if (!fields.url.value) fields.url.value = saved.url || "";
+      if (!fields.username.value) fields.username.value = saved.username || "";
+      remember.checked = saved.remember;
+      updateSavedPassword();
+    }).catch((e) => { error.textContent = e.message; })
+      .finally(() => { save.disabled = false; });
+  }
   fields.url.focus();
 }
 async function radioBrowser(epoch, savedOnly = false) {

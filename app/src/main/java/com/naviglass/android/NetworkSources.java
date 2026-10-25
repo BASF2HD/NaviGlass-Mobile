@@ -23,9 +23,9 @@ import javax.crypto.spec.GCMParameterSpec;
 import org.json.JSONObject;
 import org.json.JSONArray;
 
-/** Native-only network access. Credentials and authenticated URLs never enter the WebView. */
+/** Native-only network access. Passwords and authenticated URLs are never returned to the WebView. */
 final class NetworkSources {
-    private static JSONObject account;
+    private static volatile JSONObject account;
     private static volatile JSONArray remoteAlbums=new JSONArray();
     private static final class StarredIndex {
         final String snapshot; final java.util.Set<String> ids;
@@ -39,16 +39,47 @@ final class NetworkSources {
     private static String encrypt(String text)throws Exception{Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.ENCRYPT_MODE,key());return Base64.encodeToString(cipher.getIV(),Base64.NO_WRAP)+":"+Base64.encodeToString(cipher.doFinal(text.getBytes("UTF-8")),Base64.NO_WRAP);}
     private static String decrypt(String text)throws Exception{String[] parts=text.split(":");Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.DECRYPT_MODE,key(),new GCMParameterSpec(128,Base64.decode(parts[0],Base64.NO_WRAP)));return new String(cipher.doFinal(Base64.decode(parts[1],Base64.NO_WRAP)),"UTF-8");}
     static synchronized JSONObject account(Context c)throws Exception{if(account==null){String saved=prefs(c).getString("account","");if(saved.isEmpty())throw new IllegalStateException("Connect to Navidrome in Settings first");account=new JSONObject(decrypt(saved));}return account;}
-    static boolean active(Context c){return prefs(c).getBoolean("active",false);}
+    static boolean active(Context c){return prefs(c).getBoolean("active",false)&&(account!=null||prefs(c).contains("account"));}
     static JSONObject status(Context c)throws Exception{JSONObject j=new JSONObject().put("active",active(c)).put("connected",false);try{JSONObject a=account(c);j.put("connected",true).put("url",a.getString("url")).put("username",a.getString("username"));}catch(Exception ignored){}return j;}
     static void local(Context c){prefs(c).edit().putBoolean("active",false).apply();}
-    static synchronized void disconnect(Context c){account=null;remoteAlbums=new JSONArray();prefs(c).edit().clear().apply();}
+    static synchronized void disconnect(Context c){
+        String login=prefs(c).getString("login",prefs(c).getString("account",""));
+        boolean remember=prefs(c).getBoolean("remember",true);
+        account=null;remoteAlbums=new JSONArray();
+        SharedPreferences.Editor cleared=prefs(c).edit().clear().putBoolean("remember",remember);
+        if(remember&&!login.isEmpty())cleared.putString("login",login);
+        cleared.commit();
+    }
+    private static synchronized JSONObject rememberedLogin(Context c)throws Exception{
+        if(!prefs(c).getBoolean("remember",true))return null;
+        String saved=prefs(c).getString("login",prefs(c).getString("account",""));
+        return saved.isEmpty()?null:new JSONObject(decrypt(saved));
+    }
+    static JSONObject loginFields(Context c)throws Exception{
+        JSONObject saved=rememberedLogin(c),fields=new JSONObject()
+            .put("remember",prefs(c).getBoolean("remember",true)).put("passwordSaved",saved!=null);
+        if(saved!=null)fields.put("url",saved.getString("url")).put("username",saved.getString("username"));
+        return fields;
+    }
+    static synchronized void forgetLogin(Context c)throws Exception{
+        // Keep the running session in memory, but prevent restoration after process death.
+        if(account==null&&prefs(c).contains("account"))account(c);
+        prefs(c).edit().putBoolean("remember",false).remove("login").remove("account").commit();
+    }
     static void connect(Context c,JSONObject r)throws Exception{
         String base=r.getString("url").trim().replaceAll("/+$","");Uri u=Uri.parse(base);boolean plain="http".equals(u.getScheme());
         boolean approvedPlain=plain&&!BuildConfig.NAVIDROME_HTTP_HOST.isEmpty()&&BuildConfig.NAVIDROME_HTTP_HOST.equals(u.getHost())&&BuildConfig.NAVIDROME_HTTP_PORT==u.getPort();
         if((!"https".equals(u.getScheme())&&!approvedPlain)||u.getHost()==null||u.getUserInfo()!=null||u.getQuery()!=null||u.getFragment()!=null||base.length()>2048)throw new IllegalArgumentException("Enter an HTTPS Navidrome URL, or the exact Tailscale host and port explicitly approved for this test build");
-        String user=r.getString("username").trim(),password=r.getString("password");if(user.isEmpty()||user.length()>200||password.isEmpty()||password.length()>4096)throw new IllegalArgumentException("Enter your Navidrome username and password");
+        String user=r.getString("username").trim(),password=r.optString("password");
+        JSONObject saved=rememberedLogin(c);
+        if(password.isEmpty()&&saved!=null&&base.equals(saved.getString("url"))&&user.equals(saved.getString("username")))password=saved.getString("password");
+        if(user.isEmpty()||user.length()>200||password.isEmpty()||password.length()>4096)throw new IllegalArgumentException("Enter your Navidrome username and password");
         JSONObject proposed=new JSONObject().put("url",base).put("username",user).put("password",password);
+        boolean remember=r.optBoolean("remember",true);
+        if(remember){
+            String encryptedLogin=encrypt(proposed.toString());
+            synchronized(NetworkSources.class){prefs(c).edit().putBoolean("remember",true).putString("login",encryptedLogin).commit();}
+        }else forgetLogin(c);
         try { login(proposed); }
         catch (EndpointException notNavidrome) {
             // Original NaviGlass exposes Subsonic under this same-origin proxy.
@@ -56,8 +87,15 @@ final class NetworkSources {
             if (!"https".equals(u.getScheme()) || base.endsWith("/navidrome")) throw notNavidrome;
             proposed.put("url",base+"/navidrome");login(proposed);
         }
-        if(prefs(c).contains("account"))migrateLegacy(c);
-        JSONArray initial=albumPage(proposed,0);String encrypted=encrypt(proposed.toString());synchronized(NetworkSources.class){account=proposed;remoteAlbums=initial;prefs(c).edit().clear().putString("account",encrypted).putString("albums",initial.toString()).putBoolean("active",true).putLong("generation",System.currentTimeMillis()).commit();}
+        if(account!=null||prefs(c).contains("account"))migrateLegacy(c);
+        JSONArray initial=albumPage(proposed,0);String encrypted=remember?encrypt(proposed.toString()):"";
+        synchronized(NetworkSources.class){
+            String login=prefs(c).getString("login","");account=proposed;remoteAlbums=initial;
+            SharedPreferences.Editor connected=prefs(c).edit().clear().putBoolean("remember",remember)
+                .putString("albums",initial.toString()).putBoolean("active",true).putLong("generation",System.currentTimeMillis());
+            if(remember)connected.putString("account",encrypted).putString("login",login);
+            connected.commit();
+        }
         refresh(c);
     }
     private static void login(JSONObject proposed)throws Exception {
@@ -165,9 +203,7 @@ final class NetworkSources {
         byte[] bytes;
         try { bytes=get(url(account,endpoint,params),4*1024*1024); }
         catch(EndpointException e){throw e;}
-        catch(java.net.SocketTimeoutException e){throw new IllegalStateException("Navidrome connection timed out. Check Tailscale is connected on this device and the server is reachable.");}
-        catch(javax.net.ssl.SSLException e){throw new IllegalStateException("Could not verify the server HTTPS certificate. Check the server address and certificate; TLS protection has not been bypassed.");}
-        catch(java.io.IOException e){throw new IllegalStateException("Cannot reach Navidrome. Check Wi-Fi/Tailscale on this device and the host/port. No login was saved.");}
+        catch(java.io.IOException e){throw new IllegalStateException(ConnectionErrors.message(e));}
         JSONObject root;
         try {root=new JSONObject(new String(bytes,"UTF-8")).getJSONObject("subsonic-response");}
         catch(org.json.JSONException e){throw new EndpointException();}
