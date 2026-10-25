@@ -1,6 +1,7 @@
 import * as flow from "./renderer.js";
 import { request, listen } from "./bridge.js";
 import { icon } from "./icons.js";
+import { mountAudioOutputSettings } from "./audio-output-settings.js";
 const $ = (id) => document.getElementById(id),
   native = Boolean(window.nativeBridge);
 let albums = [],
@@ -1875,6 +1876,7 @@ async function settingsPage(epoch) {
   name.textContent = "NaviGlass";
   logo.append(image, name);
   body.append(logo);
+  mountAudioOutputSettings(body, { native, active: () => activeView === "settings" && epoch === viewEpoch });
   const actions = document.createElement("div");
   actions.className = "sourceButtons";
   actions.append(
@@ -1891,7 +1893,7 @@ async function settingsPage(epoch) {
         toast("Refreshing Navidrome albums, favourites and stations…");
         await call("serverMore");
       }),
-      button("Disconnect and forget login", () => call("serverDisconnect")),
+      button("Disconnect", () => call("serverDisconnect")),
     );
     const p = document.createElement("p");
     p.className = "hint";

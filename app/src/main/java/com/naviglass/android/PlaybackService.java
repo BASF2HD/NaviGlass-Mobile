@@ -22,10 +22,12 @@ import java.util.List;
 public final class PlaybackService extends MediaSessionService {
     static final String ADJACENT="naviglass.adjacentAlbum";
     static final String PLAY_QUEUE="naviglass.playQueue";
+    static final String AUDIO_OUTPUTS="naviglass.audioOutputs",SELECT_AUDIO_OUTPUT="naviglass.selectAudioOutput";
     private final java.util.concurrent.ExecutorService queueWorker=java.util.concurrent.Executors.newSingleThreadExecutor();
     private boolean advancing,closing;
     private ExoPlayer player;
     private MediaSession session;
+    private AudioOutputs audioOutputs;
     private final Handler handler=new Handler(Looper.getMainLooper());
     private SharedPreferences prefs;
     private final Runnable checkpoint=new Runnable(){public void run(){save();handler.postDelayed(this,5000);}};
@@ -43,9 +45,16 @@ public final class PlaybackService extends MediaSessionService {
                     if(!getPackageName().equals(c.getPackageName())&&!c.isTrusted())return MediaSession.ConnectionResult.reject();
                     // Media3 defaults can be read-only even for our own controller. Grant playback
                     // explicitly only after the same-package/trusted-controller gate above.
-                    return new MediaSession.ConnectionResult.AcceptedResultBuilder(s,c).setAvailableSessionCommands(MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon().add(new androidx.media3.session.SessionCommand(ADJACENT,android.os.Bundle.EMPTY)).add(new androidx.media3.session.SessionCommand(PLAY_QUEUE,android.os.Bundle.EMPTY)).build()).setAvailablePlayerCommands(MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS).build();
+                    return new MediaSession.ConnectionResult.AcceptedResultBuilder(s,c).setAvailableSessionCommands(MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon().add(new androidx.media3.session.SessionCommand(ADJACENT,android.os.Bundle.EMPTY)).add(new androidx.media3.session.SessionCommand(PLAY_QUEUE,android.os.Bundle.EMPTY)).add(new androidx.media3.session.SessionCommand(AUDIO_OUTPUTS,android.os.Bundle.EMPTY)).add(new androidx.media3.session.SessionCommand(SELECT_AUDIO_OUTPUT,android.os.Bundle.EMPTY)).build()).setAvailablePlayerCommands(MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS).build();
                 }
                 @Override public ListenableFuture<androidx.media3.session.SessionResult> onCustomCommand(MediaSession s,MediaSession.ControllerInfo c,androidx.media3.session.SessionCommand command,android.os.Bundle args){
+                    if((AUDIO_OUTPUTS.equals(command.customAction)||SELECT_AUDIO_OUTPUT.equals(command.customAction))&&getPackageName().equals(c.getPackageName())){
+                        try{
+                            if(SELECT_AUDIO_OUTPUT.equals(command.customAction))audioOutputs.select(args.getString("device",""));else audioOutputs.refresh();
+                            android.os.Bundle result=new android.os.Bundle();result.putString("audioOutputs",audioOutputs.snapshot().toString());
+                            return Futures.immediateFuture(new androidx.media3.session.SessionResult(androidx.media3.session.SessionResult.RESULT_SUCCESS,result));
+                        }catch(Exception e){android.os.Bundle result=new android.os.Bundle();result.putString("message",e instanceof IllegalArgumentException?e.getMessage():"Could not switch audio output. Check the device connection.");return Futures.immediateFuture(new androidx.media3.session.SessionResult(androidx.media3.session.SessionError.ERROR_BAD_VALUE,result));}
+                    }
                     if(PLAY_QUEUE.equals(command.customAction)&&getPackageName().equals(c.getPackageName())){
                         try{ArrayList<String> ids=args.getStringArrayList("ids");int index=args.getInt("index",0);if(ids==null||ids.isEmpty()||ids.size()>10000||index<0||index>=ids.size())throw new IllegalArgumentException("Invalid queue");ArrayList<MediaItem> items=new ArrayList<>();
                             for(String id:ids){Track t=Library.get(PlaybackService.this).track(id);MediaItem item=NetworkSources.item(PlaybackService.this,t);if(item==null)throw new IllegalArgumentException("Song unavailable");items.add(item);}
@@ -69,6 +78,7 @@ public final class PlaybackService extends MediaSessionService {
                     return Futures.immediateFuture(safe);
                 }
             }).build();
+        audioOutputs=new AudioOutputs(this,player,()->{if(audioOutputs!=null)try{android.os.Bundle extras=new android.os.Bundle(session.getSessionExtras());extras.putString("audioOutputs",audioOutputs.snapshot().toString());session.setSessionExtras(extras);}catch(Exception ignored){}});
         restore();
         player.addListener(new Player.Listener(){@Override public void onEvents(Player p,Player.Events events){save();}
             @Override public void onPlaybackStateChanged(int playbackState){if(playbackState==Player.STATE_ENDED&&player.getPlayWhenReady())advanceAlbum(1,true);}
@@ -106,5 +116,5 @@ public final class PlaybackService extends MediaSessionService {
             .putInt("repeat",player.getRepeatMode()).apply();}
     @Override public MediaSession onGetSession(MediaSession.ControllerInfo controller){return session;}
     @Override public void onTaskRemoved(Intent rootIntent){closing=true;if(player!=null){player.pause();save();}handler.removeCallbacksAndMessages(null);queueWorker.shutdownNow();stopForeground(STOP_FOREGROUND_REMOVE);stopSelf();}
-    @Override public void onDestroy(){closing=true;handler.removeCallbacksAndMessages(null);queueWorker.shutdownNow();save();if(session!=null)session.release();if(player!=null){player.release();player=null;}super.onDestroy();}
+    @Override public void onDestroy(){closing=true;handler.removeCallbacksAndMessages(null);queueWorker.shutdownNow();save();if(audioOutputs!=null)audioOutputs.close();if(session!=null)session.release();if(player!=null){player.release();player=null;}super.onDestroy();}
 }

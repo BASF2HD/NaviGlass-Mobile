@@ -98,7 +98,9 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
                 JSONObject request=new JSONObject(raw);try{handle(request);}catch(Exception e){failure(request.optString("id"),e);}
             }catch(Exception e){event("error",new JSONObject(),friendly(e));}
         });
-        controllerFuture=new MediaController.Builder(this,new SessionToken(this,new ComponentName(this,PlaybackService.class))).buildAsync();
+        controllerFuture=new MediaController.Builder(this,new SessionToken(this,new ComponentName(this,PlaybackService.class))).setListener(new MediaController.Listener(){
+            @Override public void onExtrasChanged(MediaController controller,Bundle extras){try{if(extras.containsKey("audioOutputs"))event("audioOutputs",new JSONObject(extras.getString("audioOutputs")),"");}catch(Exception ignored){}}
+        }).buildAsync();
         controllerFuture.addListener(()->{try{player=controllerFuture.get();player.addListener(new Player.Listener(){
             @Override public void onEvents(Player p,Player.Events events){state();}
         });state();}catch(Exception e){event("error",new JSONObject(),"Cannot start audio service");}},getMainExecutor());
@@ -142,6 +144,11 @@ public final class MainActivity extends androidx.activity.ComponentActivity {
             case "shuffle": requirePlayer();player.setShuffleModeEnabled(!player.getShuffleModeEnabled());respond(id,new JSONObject());break;
             case "repeat": requirePlayer();player.setRepeatMode(AlbumPlaybackPolicy.nextRepeatMode(player.getRepeatMode()));respond(id,new JSONObject());break;
             case "volume":requirePlayer();player.setVolume((float)Math.max(0,Math.min(1,request.optDouble("value",1))));respond(id,new JSONObject());break;
+            case "audioOutputs":case "audioOutputSelect":
+                requirePlayer();Bundle outputArgs=new Bundle();outputArgs.putString("device",request.optString("device"));
+                String outputCommand=action.equals("audioOutputSelect")?PlaybackService.SELECT_AUDIO_OUTPUT:PlaybackService.AUDIO_OUTPUTS;
+                ListenableFuture<androidx.media3.session.SessionResult> outputResult=player.sendCustomCommand(new androidx.media3.session.SessionCommand(outputCommand,Bundle.EMPTY),outputArgs);
+                outputResult.addListener(()->{try{androidx.media3.session.SessionResult result=outputResult.get();if(result.resultCode!=androidx.media3.session.SessionResult.RESULT_SUCCESS)throw new IllegalArgumentException(result.extras.getString("message","Audio output selection is unavailable"));respond(id,new JSONObject(result.extras.getString("audioOutputs")));}catch(Exception e){failure(id,e);}},getMainExecutor());break;
             case "immersive":immersivePlayer=request.optBoolean("enabled");updateSystemBars();respond(id,new JSONObject());break;
             case "serverDisconnect":if(player!=null&&player.getCurrentMediaItem()!=null&&player.getCurrentMediaItem().mediaId.startsWith("nd_")){player.pause();player.clearMediaItems();}NetworkSources.disconnect(this);respond(id,new JSONObject());catalog();break;
             default:

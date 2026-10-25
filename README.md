@@ -70,6 +70,12 @@ Stations show provider artwork where available, with a music-icon fallback. **Mo
 
 Play/pause and previous/next work for radio queues. Live streams cannot be sought and do not support song shuffle/repeat/favourites. Streaming and searches use internet data. The directory and broadcasters receive your network address and may log requests; no account is required.
 
+## USB and audio output selection
+
+Open **Settings → Audio output / USB DAC**. Choose a connected USB DAC or another available media output, or **System default** to let Android route automatically. The native playback service applies the preference, including during background playback, without replacing the current queue or position. The choice survives Activity/service restarts. Disconnecting a saved DAC falls back to system routing and reconnecting restores it; Android may pause playback on unplug for headphone safety. Device matching avoids guessing between indistinguishable DACs. No USB driver or microphone permission is requested by the app.
+
+This is a preferred system output, subject to Android routing policy. It does not enable exclusive or bit-perfect playback. Physical phone/DAC routing still needs a hardware check. The emulator verifies the actual Settings → native command path, selection of a real emulator output, unchanged/advancing playback, invalid-device rejection, Activity recreation and an actual playback-service restart. JVM checks cover DAC identity changes, reconnection and ambiguous devices.
+
 ## Install NaviGlass 0.2.5
 
 Download the APK and optional SHA-256 checksum from the [0.2.5 GitHub release](https://github.com/BASF2HD/NaviGlass-Mobile/releases/tag/v0.2.5).

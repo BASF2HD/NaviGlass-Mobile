@@ -1,5 +1,11 @@
 # Current mobile/Navidrome refresh — 0.2.5
 
+## USB/audio output Settings — 25 October 2026
+
+Settings now lists native media outputs and identifies USB devices. The playback service applies Media3's preferred audio device, persists its identity and listens for device add/remove events in the background. A disconnected preference uses system default and restores on reconnection; ambiguous identical DACs are not guessed. No queue replacement or microphone/USB permission request is involved. VersionName 0.2.5, versionCode 8 and signer are retained.
+
+Build, lint, 14 JVM tests and eight native checks across output, login, server, playback and layout pass. The output check uses the real Settings UI and MediaSession command path with an actual emulator output. It verifies selected device persistence, an advancing unchanged queue, invalid-device rejection, Activity recreation and a distinct service/session after restart. Model tests cover USB runtime ID/port changes, disconnected and ambiguous devices. Physical USB DAC routing and acoustic output have not been verified; this is system output selection, not a bit-perfect claim.
+
 ## Remember login — 25 October 2026
 
 VersionName 0.2.5, versionCode 8, package and signer remain unchanged. Remember login encrypts the last attempt with Android Keystore, restores URL/username and exposes only a saved-password flag to the renderer. Native code reuses the password only for that exact server/account. Failed connections retain an opted-in login. Unchecking immediately removes persisted credentials; a running session remains in memory and cannot restore after process death. Disconnect retains an opted-in login for reconnection. DNS, certificate, timeout and other reachability errors provide separate recovery guidance.
