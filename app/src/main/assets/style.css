@@ -186,6 +186,23 @@ input[type="range"] {
   text-overflow: ellipsis;
   text-shadow: 0 2px 5px #0008;
 }
+#caption #trackAlbum {
+  display: flex;
+  justify-content: center;
+  font-size: var(--album-line-size, 15px);
+}
+#caption #trackAlbum[hidden] {
+  display: none;
+}
+#trackAlbumName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#trackAlbumYear {
+  flex-shrink: 0;
+  white-space: pre;
+}
 #infoMenu {
   position: absolute;
   right: -3px;

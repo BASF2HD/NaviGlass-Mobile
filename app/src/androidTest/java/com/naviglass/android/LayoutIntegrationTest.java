@@ -18,6 +18,13 @@ import static org.junit.Assert.*;
 @RunWith(AndroidJUnit4.class)
 public class LayoutIntegrationTest {
  private final Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+ @Test public void remoteTrackArtistUsesTrackCredits()throws Exception {
+  assertEquals("Track Duo",NetworkSources.trackArtist(new org.json.JSONObject(
+   "{\"artist\":\"Unknown Artist\",\"artists\":[{\"name\":\"Track Duo\"}],\"singer\":\"Singer\",\"albumArtist\":\"Composer\"}")));
+  assertEquals("Singer",NetworkSources.trackArtist(new org.json.JSONObject(
+   "{\"artist\":null,\"singer\":\"Singer\",\"albumArtist\":\"Composer\"}")));
+  assertEquals("",NetworkSources.trackArtist(new org.json.JSONObject("{\"albumArtist\":\"Composer\"}")));
+ }
  @Test public void landscapeSwipeCoverDrawerAndDropups()throws Exception {
   Library library=Library.get(context);NetworkSources.local(context);
   try {
@@ -64,7 +71,11 @@ public class LayoutIntegrationTest {
     js(activity,"document.querySelector('[data-view=songs]').click();true");Thread.sleep(300);
     assertEquals("true",js(activity,"!document.querySelector('#content').hidden && document.querySelector('#content').getBoundingClientRect().bottom<document.querySelector('[data-view=songs]').getBoundingClientRect().top"));
     saveScreenshot("native-dropup-landscape.png");js(activity,"Array.from(document.querySelectorAll('#content button')).find(b=>b.textContent.startsWith('All Songs')).click();true");Thread.sleep(700);
-    assertEquals("true",js(activity,"naviglassDebug.browseMode==='songs' && Boolean(naviglassDebug.entry.track) && document.querySelector('#content').hidden"));saveScreenshot("native-song-landscape.png");
+    assertEquals("true",js(activity,"naviglassDebug.browseMode==='songs' && Boolean(naviglassDebug.entry.track) && document.querySelector('#content').hidden"));
+    assertEquals("Track artist stays on the second line and the album year on the third", "true",
+     js(activity,"document.querySelector('#subtitle').textContent==='Test Ensemble' && !document.querySelector('#trackAlbum').hidden && document.querySelector('#trackAlbumName').textContent===naviglassDebug.entry.track.album && document.querySelector('#trackAlbumYear').textContent.trim()==='| 2026'"));
+    assertEquals("Three-line caption clears controls", "true",
+     js(activity,"document.querySelector('#caption').getBoundingClientRect().bottom<=document.querySelector('#controls').getBoundingClientRect().top"));saveScreenshot("native-song-landscape.png");
     js(activity,"document.querySelector('#fullscreen').click();true");Thread.sleep(250);
     assertEquals("true",js(activity,"document.body.classList.contains('immersive')"));
     activity.onActivity(a->a.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));Thread.sleep(1000);

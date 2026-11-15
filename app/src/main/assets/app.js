@@ -337,12 +337,17 @@ function caption() {
     : state.track?.albumId === album.id;
   $("title").textContent = playing ? state.track.title : album.title;
   const song = album.track || (playing ? state.track : null);
-  $("subtitle").textContent = [
-    song?.album || album.artist,
-    song?.year || album.year,
-  ]
-    .filter(Boolean)
-    .join(" | ");
+  const albumName = song ? song.album || "" : "";
+  const albumYear = song ? song.year || album.year || "" : "";
+  const artist = [song?.artist, song?.singer]
+    .map((value) => String(value || "").trim())
+    .find((value) => value && !/^(unknown(?: artist| singer)?|\[unknown\])$/i.test(value));
+  $("subtitle").textContent = song
+    ? artist || "Unknown Artist"
+    : [album.artist, album.year].filter(Boolean).join(" | ");
+  $("trackAlbumName").textContent = albumName;
+  $("trackAlbumYear").textContent = albumYear ? (albumName ? " | " : "") + albumYear : "";
+  $("trackAlbum").hidden = !albumName && !albumYear;
   $("albumPosition").textContent = albumIndex + 1 + " / " + albums.length;
   const bounds = flow.getActiveCoverBounds();
   if (bounds) {
@@ -360,6 +365,7 @@ function caption() {
       : Math.max(18, Math.min(34, bounds.width * 0.07));
     $("caption").style.setProperty("--title-size", titleSize + "px");
     $("caption").style.setProperty("--subtitle-size", subtitleSize + "px");
+    $("caption").style.setProperty("--album-line-size", Math.round(subtitleSize * 0.84) + "px");
     $("caption").style.width =
       Math.min(bounds.width, $("scene").clientWidth - 32) + "px";
     const panel = $("caption"),
@@ -379,15 +385,15 @@ function caption() {
         "--subtitle-size",
         Math.max(landscape ? 16 : 14, subtitleSize * scale) + "px",
       );
+      panel.style.setProperty("--album-line-size", Math.max(10, Math.round(subtitleSize * scale * 0.84)) + "px");
     }
     const nearCover =
       document.body.classList.contains("immersive") ||
       (innerWidth < 700 && innerHeight > innerWidth);
-    panel.style.top =
-      (nearCover
-        ? minimumTop
-        : Math.max(minimumTop, controlsTop - panel.offsetHeight - captionGap)) +
-      "px";
+    const bottomLimit = (document.body.classList.contains("immersive") ? innerHeight - 32 : controlsTop)
+      - panel.offsetHeight - captionGap;
+    const preferredTop = nearCover ? minimumTop : Math.max(minimumTop, bottomLimit);
+    panel.style.top = Math.max(0, $("trackAlbum").hidden ? preferredTop : Math.min(preferredTop, bottomLimit)) + "px";
   }
 }
 flow.initScene($("scene"));

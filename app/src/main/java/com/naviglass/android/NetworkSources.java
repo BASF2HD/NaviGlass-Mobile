@@ -25,6 +25,39 @@ import org.json.JSONArray;
 
 /** Native-only network access. Passwords and authenticated URLs are never returned to the WebView. */
 final class NetworkSources {
+    private static String usableTrackCredit(String value) {
+        String name=value.trim();
+        return name.matches("(?i)unknown(?: artist| singer| vocalist)?|\\[unknown\\]") ? "" : name;
+    }
+    static String trackArtist(JSONObject song) {
+        for(String field:new String[]{"displayArtist","artist","artists","displaySinger","singer","singers",
+                "displayVocalist","vocalist","vocalists","contributors"}){
+            if(song.isNull(field))continue;
+            JSONArray entries=song.optJSONArray(field);
+            if(entries==null){
+                String value=usableTrackCredit(song.optString(field,""));
+                if(!value.isEmpty())return value;
+                continue;
+            }
+            java.util.Set<String> names=new java.util.LinkedHashSet<>();
+            for(int i=0;i<entries.length();i++){
+                if(entries.isNull(i))continue;
+                JSONObject entry=entries.optJSONObject(i);
+                if(field.equals("contributors")){
+                    if(entry==null)continue;
+                    String role=entry.optString("role").trim().toLowerCase(java.util.Locale.ROOT);
+                    if(role.equals("performer"))role=entry.optString("subRole").trim().toLowerCase(java.util.Locale.ROOT);
+                    if(!role.matches("singer|vocalist|vocal|vocals"))continue;
+                    entry=entry.optJSONObject("artist");
+                    if(entry==null)continue;
+                }
+                String name=usableTrackCredit(entry==null?entries.optString(i,""):entry.optString("name",""));
+                if(!name.isEmpty())names.add(name);
+            }
+            if(!names.isEmpty())return String.join(", ",names);
+        }
+        return "";
+    }
     private static volatile JSONObject account;
     private static volatile JSONArray remoteAlbums=new JSONArray();
     private static final class StarredIndex {
@@ -179,7 +212,7 @@ final class NetworkSources {
     private static JSONArray normalizeTracks(Context c,JSONArray songs,String prefix,JSONObject owner)throws Exception{
         JSONArray out=new JSONArray();if(songs==null)return out;Library library=Library.get(c);
         android.database.sqlite.SQLiteDatabase db=library.getWritableDatabase();db.beginTransaction();try {
-        for(int i=0;i<songs.length();i++){JSONObject s=songs.getJSONObject(i);if(!prefix.isEmpty() && !s.optString("title").trim().toLowerCase(java.util.Locale.ROOT).startsWith(prefix.trim().toLowerCase(java.util.Locale.ROOT)))continue;Track t=new Track();String song=s.getString("id");t.id="nd_"+Library.key(owner.getString("url")+":"+owner.getString("username")+":"+song);t.source="navidrome:"+Library.key(owner.getString("url")+":"+owner.getString("username"));Track legacy=library.track("nd_"+Library.key(owner.getString("url")+":"+song));if(legacy!=null&&legacy.source.equals(t.source))t.id=legacy.id;t.uri=new Uri.Builder().scheme("navidrome").authority("track").appendPath(song).appendQueryParameter("account",Library.key(owner.getString("url")+":"+owner.getString("username"))).appendQueryParameter("cover",s.optString("coverArt")).build().toString();t.albumId="nd:"+s.optString("albumId");t.title=s.optString("title","Untitled");t.artist=s.optString("artist");t.album=s.optString("album");t.year=s.optString("year");t.number=s.optInt("track");t.disc=s.optInt("discNumber");t.duration=s.optLong("duration")*1000;t.mime=s.optString("contentType");library.getWritableDatabase().insertWithOnConflict("tracks",null,t.values(0),android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE);out.put(t.json(favourite(c,t)));}db.setTransactionSuccessful();return out;}finally{db.endTransaction();}
+        for(int i=0;i<songs.length();i++){JSONObject s=songs.getJSONObject(i);if(!prefix.isEmpty() && !s.optString("title").trim().toLowerCase(java.util.Locale.ROOT).startsWith(prefix.trim().toLowerCase(java.util.Locale.ROOT)))continue;Track t=new Track();String song=s.getString("id");t.id="nd_"+Library.key(owner.getString("url")+":"+owner.getString("username")+":"+song);t.source="navidrome:"+Library.key(owner.getString("url")+":"+owner.getString("username"));Track legacy=library.track("nd_"+Library.key(owner.getString("url")+":"+song));if(legacy!=null&&legacy.source.equals(t.source))t.id=legacy.id;t.uri=new Uri.Builder().scheme("navidrome").authority("track").appendPath(song).appendQueryParameter("account",Library.key(owner.getString("url")+":"+owner.getString("username"))).appendQueryParameter("cover",s.optString("coverArt")).build().toString();t.albumId="nd:"+s.optString("albumId");t.title=s.optString("title","Untitled");t.artist=trackArtist(s);t.album=s.optString("album");t.year=s.optString("year");t.number=s.optInt("track");t.disc=s.optInt("discNumber");t.duration=s.optLong("duration")*1000;t.mime=s.optString("contentType");library.getWritableDatabase().insertWithOnConflict("tracks",null,t.values(0),android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE);out.put(t.json(favourite(c,t)));}db.setTransactionSuccessful();return out;}finally{db.endTransaction();}
     }
     static JSONArray playlists(Context c)throws Exception{ensureSynced(c);return cached(c,"playlists");}
     private static JSONArray fetchPlaylists(JSONObject a)throws Exception{JSONArray input=api(a,"getPlaylists",new JSONObject()).getJSONObject("playlists").optJSONArray("playlist"),out=new JSONArray();if(input!=null)for(int i=0;i<input.length();i++){JSONObject p=input.getJSONObject(i);out.put(new JSONObject().put("id",p.getString("id")).put("name",p.optString("name")).put("count",p.optInt("songCount")).put("changed",p.optString("changed")).put("remote",true));}return out;}
